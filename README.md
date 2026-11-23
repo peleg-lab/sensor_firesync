@@ -40,7 +40,6 @@ python firefly_swarm_sensor_sweep.py --help              # all options and a ful
 ## Limits
 
 - The response was measured with a single light source, and the model applies it to mutual interaction among many flashers.
-- The phase convention follows Figure 3 of Martin et al. The simulation code in led_firesync uses the opposite sign for this phase; `--phase-sign code` runs the model that way, and the groups then do not synchronize.
 - A generic phase-restoring rule (`--prc restoring`) gives a similar spread at 35 to 50 Hz (8 to 10 ms).
 - The model does not yet include spatial resolution, sensing range, flash duration and brightness, or movement.
 

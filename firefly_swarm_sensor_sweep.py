@@ -49,8 +49,7 @@ RESPONSE RULES (--prc)
   An agent that flashes ahead of the flash it sees delays its next flash, and
   an agent that is behind advances it. In the model phi_eval > 0 means the
   agent flashed first (it is ahead), so the fitted curve is evaluated at
-  -phi_eval. The simulation code in led_firesync evaluates it at +phi_eval;
-  --phase-sign code does the same here.
+  -phi_eval.
 
 WHAT THE SIMULATIONS SHOW (Nov 2026; defaults, 20 runs of 60 s per point)
   mean:      the group synchronizes, and the flash-time spread is about one
@@ -60,9 +59,8 @@ WHAT THE SIMULATIONS SHOW (Nov 2026; defaults, 20 runs of 60 s per point)
              15 Hz (N = 50): larger groups need a faster sensor.
   restoring: the same spread at 35 to 50 Hz (8 to 10 ms); synchrony is lost
              below about 5, 7 and 10 Hz.
-  --phase-sign code: no zero-lag synchrony in this model. How a response
-             measured with a single source should be applied to mutual
-             interaction among many flashers is an open modeling step.
+  The response was measured with a single light source and is applied here to
+  mutual interaction among many flashers.
   Not in the model yet: flash duration and brightness (detectability, range),
   spatial acuity (which neighbors can be told apart), motion.
 
@@ -118,13 +116,12 @@ def prc_restoring(phi_eval, gain=0.15):
     return -gain * np.sin(2.0 * np.pi * phi_eval)
 
 
-def make_prc(name, led_ms=700, gain=0.15, phase_sign="paper"):
+def make_prc(name, led_ms=700, gain=0.15):
     if name in ("measured", "mean"):
         Yamp, y0, phi_c, kappa = MEAN_FIT if name == "mean" else TABLE_S3[led_ms]
         # Figure 3 of the preprint: ahead of the flash it sees -> delay, behind -> advance.
         # phi_eval > 0 means the agent flashed first (ahead), so the curve is read at -phi_eval.
-        sign = 1.0 if phase_sign == "code" else -1.0
-        return lambda p: prc_measured(sign * p, Yamp, y0, phi_c, kappa)
+        return lambda p: prc_measured(-p, Yamp, y0, phi_c, kappa)
     if name == "restoring":
         return lambda p: prc_restoring(p, gain)
     raise ValueError(name)
@@ -246,9 +243,8 @@ COLORS = {5: "#C8A24A", 20: "#2E8B8B", 50: "#6B3F6B"}  # amber, teal, plum
 
 
 def sweep(prc_name, freqs, Ns, out_prefix, **kw):
-    phase_sign = kw.pop("phase_sign", "paper")
-    prc = make_prc(prc_name, kw.pop("led_ms", 700), kw.pop("gain", 0.15), phase_sign)
-    label = prc_name + ("_codesign" if phase_sign == "code" and prc_name != "restoring" else "")
+    prc = make_prc(prc_name, kw.pop("led_ms", 700), kw.pop("gain", 0.15))
+    label = prc_name
     rows = []
     for N in Ns:
         for f in freqs:
@@ -588,7 +584,7 @@ def plot_rates(out_png, rates=(1000.0, 40.0, 3.0), N=20, gain=0.15, seed=0):
     plt.close(fig)
 
 
-def plot_report(rows, out_png, f_eye=40.0, N=20, gain=0.15, seed=0, prc_name="mean", led_ms=700, phase_sign="paper"):
+def plot_report(rows, out_png, f_eye=40.0, N=20, gain=0.15, seed=0, prc_name="mean", led_ms=700):
     """Figure for the report. (A) One simulated group whose sensor has the temporal
     resolution of the firefly eye (f_eye), with one group flash zoomed in. (B) Flash-time
     spread against sensor temporal resolution for the group sizes in `rows`."""
@@ -608,7 +604,7 @@ def plot_report(rows, out_png, f_eye=40.0, N=20, gain=0.15, seed=0, prc_name="me
 
     # ---- A: same runs as the sweep (20 runs of 60 s); draw the most typical run
     frame = 1e3 / f_eye
-    prc = make_prc(prc_name, led_ms, gain, phase_sign)
+    prc = make_prc(prc_name, led_ms, gain)
     fl, _ = simulate(prc, N=N, f_sensor=f_eye, duration=60.0, trials=20, seed=seed)
     met = sync_metrics(fl, N, 20, 60.0)
     spread = np.nanmedian(met[:, 0])
@@ -681,9 +677,6 @@ def main():
                     help="response rule: mean = measured firefly response, mean fit (default)")
     ap.add_argument("--led-ms", type=int, default=700, choices=sorted(TABLE_S3), help="Table S3 row for --prc measured")
     ap.add_argument("--gain", type=float, default=0.15, help="gain of the restoring rule")
-    ap.add_argument("--phase-sign", default="paper", choices=["paper", "code"],
-                    help="phase convention of the measured response: paper = Figure 3 of the preprint (default), "
-                         "code = the led_firesync simulation code")
     ap.add_argument("--freqs", type=float, nargs="+", default=DEFAULT_FREQS, help="sensor temporal resolutions (Hz)")
     ap.add_argument("--n", type=int, nargs="+", default=DEFAULT_NS, help="group sizes")
     ap.add_argument("--k", type=int, default=None, help="visible neighbors per agent (default: all)")
@@ -703,8 +696,7 @@ def main():
     ap.add_argument("--report", action="store_true",
                     help="run the default sweep and draw the two-panel figure (sweep_mean.csv, figure_sensor_resolution.png)")
     a = ap.parse_args()
-    tag = (f"measured{a.led_ms}" if a.prc == "measured" else a.prc)
-    tag += "_codesign" if (a.phase_sign == "code" and a.prc != "restoring") else ""
+    tag = f"measured{a.led_ms}" if a.prc == "measured" else a.prc
     if a.report:
         if a.from_csv:  # redraw from a saved sweep
             with open(a.from_csv) as fh:
@@ -712,10 +704,9 @@ def main():
             for r in rows:
                 r["N"] = int(r["N"])
         else:
-            rows = sweep(a.prc, DEFAULT_FREQS, DEFAULT_NS, f"sweep_{tag}", led_ms=a.led_ms, gain=a.gain,
-                         phase_sign=a.phase_sign, seed=a.seed)
+            rows = sweep(a.prc, DEFAULT_FREQS, DEFAULT_NS, f"sweep_{tag}", led_ms=a.led_ms, gain=a.gain, seed=a.seed)
         fig = "figure_sensor_resolution.png" if tag == "mean" else f"figure_sensor_resolution_{tag}.png"
-        spread = plot_report(rows, fig, gain=a.gain, seed=a.seed, prc_name=a.prc, led_ms=a.led_ms, phase_sign=a.phase_sign)
+        spread = plot_report(rows, fig, gain=a.gain, seed=a.seed, prc_name=a.prc, led_ms=a.led_ms)
         print(f"wrote {fig} (panel A: flash-time spread {spread:.1f} ms)")
         return
     if a.rates:
@@ -739,12 +730,12 @@ def main():
               self_mask=not a.no_self_mask, latency_comp=not a.no_latency_comp, k=a.k,
               phase_spread=a.phase_spread)
     if a.single is not None:
-        prc = make_prc(a.prc, a.led_ms, a.gain, a.phase_sign)
+        prc = make_prc(a.prc, a.led_ms, a.gain)
         for N in a.n:
             print(run_condition(prc, N, a.single, **kw))
         return
     out = a.out or f"sweep_{tag}"
-    rows = sweep(a.prc, a.freqs, a.n, out, led_ms=a.led_ms, gain=a.gain, phase_sign=a.phase_sign, **kw)
+    rows = sweep(a.prc, a.freqs, a.n, out, led_ms=a.led_ms, gain=a.gain, **kw)
     plot(rows, out + ".png")
     print("wrote", out + ".csv", "and", out + ".png")
 
